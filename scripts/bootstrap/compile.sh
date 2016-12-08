@@ -49,6 +49,7 @@ linux)
     else
       PROTOC=${PROTOC:-third_party/protobuf/protoc-linux-x86_64.exe}
       GRPC_JAVA_PLUGIN=${GRPC_JAVA_PLUGIN:-third_party/grpc/protoc-gen-grpc-java-0.15.0-linux-x86_64.exe} 
+    fi
   else
     if [ "${MACHINE_IS_ARM}" = 'yes' ]; then
       PROTOC=${PROTOC:-third_party/protobuf/protoc-linux-arm32.exe}
