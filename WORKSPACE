@@ -361,20 +361,6 @@ http_file(
 )
 
 http_file(
-    name = "openjdk_linux_s390x",
-    downloaded_file_path = "adoptopenjdk-s390x.tar.gz",
-    sha256 = "c74dd2803dca8185e0a74d9ab47442454e0c500bcbdfaf485bfc90b4d87aee2b",
-    urls = ["file:///home/peterbao/allmodules_jdk.tar.gz"],
-)
-
-http_file(
-    name = "openjdk_linux_s390x_minimal",
-    downloaded_file_path = "adoptopenjdk-s390x-minimal.tar.gz",
-    sha256 = "fe9403e956a87b0d8fc7ad55a841d6e4718d364603d652d9443d59c0b3544553",
-    urls = ["file:///home/peterbao/minimal_jdk.tar.gz"],
-)
-
-http_file(
     name = "openjdk_linux_s390x_vanilla",
     downloaded_file_path="adoptopenjdk-s390x-vanilla.tar.gz",
     sha256 = "d9b72e87a1d3ebc0c9552f72ae5eb150fffc0298a7cb841f1ce7bfc70dcd1059",

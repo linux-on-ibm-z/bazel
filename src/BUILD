@@ -151,8 +151,8 @@ JAVA_TOOLS = [
         "//src/test:__subpackages__",  # For integration tests
     ],
 ) for suffix, jdk in {
-    "_jdk_allmodules": [":embedded_jdk_allmodules_cached"],
-    "_jdk_minimal": [":embedded_jdk_minimal_cached"],
+    "_jdk_allmodules": [":embedded_jdk_allmodules"],
+    "_jdk_minimal": [":embedded_jdk_minimal"],
     "_dev_jdk": [":embedded_jdk_minimal"],
     "_nojdk": [],
 }.items()]
@@ -182,9 +182,6 @@ filegroup(
         "//src/conditions:linux_aarch64": [
             "@openjdk_linux_aarch64//file",
         ],
-        "//src/conditions:linux_s390x": [
-            "@openjdk_linux_s390x//file",
-        ],
         "//conditions:default": [
             "@openjdk_linux//file",
         ],
@@ -206,9 +203,6 @@ filegroup(
         ],
         "//src/conditions:linux_aarch64": [
             "@openjdk_linux_aarch64_minimal//file",
-        ],
-        "//src/conditions:linux_s390x": [
-            "@openjdk_linux_s390x_minimal//file",
         ],
         "//conditions:default": [
             "@openjdk_linux_minimal//file",
