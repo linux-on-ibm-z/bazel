@@ -44,8 +44,13 @@ public class StringUnsafeTest {
     StringUnsafe stringUnsafe = StringUnsafe.getInstance();
     assertThat(ByteBuffer.wrap(stringUnsafe.getByteArray("hello")))
         .isEqualTo(StandardCharsets.ISO_8859_1.encode("hello"));
-    assertThat(ByteBuffer.wrap(stringUnsafe.getByteArray("lambda λ")))
-        .isEqualTo(StandardCharsets.UTF_16LE.encode("lambda λ"));
+
+    if (System.getProperty("os.arch").equals("s390x"))
+        assertThat(ByteBuffer.wrap(stringUnsafe.getByteArray("lambda λ")))
+            .isEqualTo(StandardCharsets.UTF_16BE.encode("lambda λ"));
+    else
+        assertThat(ByteBuffer.wrap(stringUnsafe.getByteArray("lambda λ")))
+            .isEqualTo(StandardCharsets.UTF_16LE.encode("lambda λ"));
   }
 
   @Test

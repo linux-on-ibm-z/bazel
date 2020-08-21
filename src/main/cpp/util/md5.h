@@ -53,7 +53,7 @@ class Md5Digest {
 
   // Produces a hexadecimal string representation of this digest in the form:
   // [0-9a-f]{32}
-  std::string String() const;
+  std::string String();
 
  private:
   void Transform(const unsigned char* buffer, unsigned int len);
