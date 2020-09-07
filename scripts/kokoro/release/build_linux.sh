@@ -18,6 +18,37 @@ set -e
 set -x
 
 RELEASE_NAME=${RELEASE_NAME:-unknown}
+CURDIR="$(pwd)"
+MACHINE_ARCH=`uname -m`
+
+if [ ${MACHINE_ARCH} == 's390x' ]; then
+# s390x steps here
+
+# Install dependencies
+sudo apt-get update  
+sudo apt-get install -y wget curl openjdk-11-jdk unzip patch build-essential zip python3 git libapr1
+
+sudo ln -sf /usr/bin/python3 /usr/bin/python   
+
+# Bootstrap bazel
+mkdir bazel-bootstrap && cd bazel-bootstrap
+wget https://github.com/bazelbuild/bazel/releases/download/"${RELEASE_NAME}"/bazel-"${RELEASE_NAME}"-dist.zip
+unzip bazel-"${RELEASE_NAME}"-dist.zip
+chmod -R +w .
+env EXTRA_BAZEL_ARGS="--host_javabase=@local_jdk//:jdk" bash ./compile.sh
+export PATH=$PATH:$CURDIR/bazel-bootstrap/output/
+
+# Compile bazel Binary
+cd $CURDIR
+bazel build --host_javabase=@local_jdk//:jdk --sandbox_tmpfs_path=/tmp //:bazel-distfile
+cd $CURDIR
+mkdir bazel-s390x && cd bazel-s390x
+unzip $CURDIR/bazel-bin/bazel-distfile.zip
+bash ./compile.sh 
+cd $CURDIR
+mkdir output
+cp "bazel-s390x/output/bazel" output/bazel
+else
 
 # Get Bazelisk
 mkdir -p /tmp/tool
@@ -28,7 +59,21 @@ chmod +x "${BAZELISK}"
 "${BAZELISK}" build --sandbox_tmpfs_path=/tmp //src:bazel
 mkdir output
 cp bazel-bin/src/bazel output/bazel
+fi
 
+if [ ${MACHINE_ARCH} == 's390x' ]; then
+
+output/bazel build \
+    -c opt \
+    --stamp \
+    --sandbox_tmpfs_path=/tmp \
+    --embed_label "${RELEASE_NAME}" \
+    --workspace_status_command=scripts/ci/build_status_command.sh \
+       src/bazel 
+
+mkdir artifacts
+cp bazel-bin/src/bazel "artifacts/bazel-${RELEASE_NAME}-linux-s390x"
+else
 output/bazel build \
     -c opt \
     --stamp \
@@ -49,4 +94,7 @@ cp "bazel-bin/scripts/packages/debian/bazel-debian.deb" "artifacts/bazel_${RELEA
 cp "bazel-bin/scripts/packages/debian/bazel.dsc" "artifacts/bazel_${RELEASE_NAME}.dsc"
 cp "bazel-bin/scripts/packages/debian/bazel.tar.gz" "artifacts/bazel_${RELEASE_NAME}.tar.gz"
 cp "bazel-bin/bazel-distfile.zip" "artifacts/bazel-${RELEASE_NAME}-dist.zip"
+
+fi
+
 
