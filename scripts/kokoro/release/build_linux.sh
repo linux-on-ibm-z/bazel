@@ -74,7 +74,7 @@ output/bazel build \
 cd $CURDIR
 mkdir bazel-s390x && cd bazel-s390x
 unzip $CURDIR/bazel-bin/bazel-distfile.zip
-bash ./compile.sh
+env EMBED_LABEL="${RELEASE_NAME}" bash ./compile.sh
 cd $CURDIR
 
 mkdir artifacts
