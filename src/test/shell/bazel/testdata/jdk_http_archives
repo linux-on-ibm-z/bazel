@@ -57,6 +57,14 @@ http_archive(
     strip_prefix = "zulu11.37.17-ca-jdk11.0.6-win_x64",
     urls = ["https://mirror.bazel.build/openjdk/azul-zulu11.37.17-ca-jdk11.0.6/zulu11.37.17-ca-jdk11.0.6-win_x64.zip"],
 )
+# This must be kept in sync with the top-level WORKSPACE file.
+http_archive(
+    name = "openjdk11_s390x_linux_archive",
+    build_file_content = "java_runtime(name = 'runtime', srcs =  glob(['**']), visibility = ['//visibility:public'])",
+    sha256 = "d9b72e87a1d3ebc0c9552f72ae5eb150fffc0298a7cb841f1ce7bfc70dcd1059",
+    strip_prefix = "jdk-11.0.7+10",
+    urls = ["https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.7%2B10/OpenJDK11U-jdk_s390x_linux_hotspot_11.0.7_10.tar.gz"],
+)
 
 #################################### JDK 14 ####################################
 # This must be kept in sync with the top-level WORKSPACE file.
@@ -82,6 +90,14 @@ http_archive(
     sha256 = "9cb078b5026a900d61239c866161f0d9558ec759aa15c5b4c7e905370e868284",
     strip_prefix = "zulu14.28.21-ca-jdk14.0.1-win_x64",
     urls = ["https://mirror.bazel.build/cdn.azul.com/zulu/bin/zulu14.28.21-ca-jdk14.0.1-win_x64.zip"],
+)
+# This must be kept in sync with the top-level WORKSPACE file.
+http_archive(
+    name = "openjdk14_s390x_linux_archive",
+    build_file_content = "java_runtime(name = 'runtime', srcs =  glob(['**']), visibility = ['//visibility:public'])",
+    sha256 = "7d27aea30e359cf0bb561f8dcca6f4591dbc3ae831981f8a19aa367d31a9709b",
+    strip_prefix = "jdk-14.0.2+12",
+    urls = ["https://github.com/AdoptOpenJDK/openjdk14-binaries/releases/download/jdk-14.0.2%2B12/OpenJDK14U-jdk_s390x_linux_hotspot_14.0.2_12.tar.gz"],
 )
 
 #################################### JDK 15 ####################################
@@ -127,4 +143,14 @@ exports_files(["WORKSPACE"], visibility = ["//visibility:public"])
         "https://cdn.azul.com/zulu/bin/zulu15.27.17-ca-jdk15.0.0-win_x64.zip",
     ],
 )
-
+# This must be kept in sync with the top-level WORKSPACE file.
+http_archive(
+    name = "openjdk15_s390x_linux_archive",
+    build_file_content = """
++java_runtime(name = 'runtime', srcs =  glob(['**']), visibility = ['//visibility:public'])
++exports_files(["WORKSPACE"], visibility = ["//visibility:public"])
++""",
+    sha256 = "d402e322841abc3c5c8b0352f08d54d6b5c25b7d6f81716401da266bcb1d1ff0",
+    strip_prefix = "jdk-15.0.1+9",
+    urls = ["https://github.com/AdoptOpenJDK/openjdk15-binaries/releases/download/jdk-15.0.1%2B9/OpenJDK15U-jdk_s390x_linux_hotspot_15.0.1_9.tar.gz"],
+)

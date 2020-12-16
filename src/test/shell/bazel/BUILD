@@ -192,6 +192,7 @@ sh_test(
         "//src/conditions:darwin": ["@openjdk14_darwin_archive//:runtime"],
         "//src/conditions:windows": ["@openjdk14_windows_archive//:runtime"],
         "//src/conditions:linux": ["@openjdk14_linux_archive//:runtime"],
+        "//src/conditions:linux_s390x": ["@openjdk14_s390x_linux_archive//:runtime"],
     }),
     data = [
         ":test-deps",
@@ -217,6 +218,7 @@ sh_test(
         "//src/conditions:darwin": ["@openjdk15_darwin_archive//:runtime"],
         "//src/conditions:windows": ["@openjdk15_windows_archive//:runtime"],
         "//src/conditions:linux": ["@openjdk15_linux_archive//:runtime"],
+        "//src/conditions:linux_s390x": ["@openjdk15_s390x_linux_archive//:runtime"],
     }),
     data = [
         ":test-deps",
@@ -266,6 +268,7 @@ JAVA_VERSIONS = ("11", "14", "15")
             "//src/conditions:darwin": ["@openjdk" + java_version + "_darwin_archive//:runtime"],
             "//src/conditions:windows": ["@openjdk" + java_version + "_windows_archive//:runtime"],
             "//src/conditions:linux": ["@openjdk" + java_version + "_linux_archive//:runtime"],
+            "//src/conditions:linux_s390x": ["@openjdk" + java_version + "_s390x_linux_archive//:runtime"],
         }),
         data = [
             ":test-deps",
@@ -296,6 +299,7 @@ JAVA_VERSIONS = ("11", "14", "15")
             "//src/conditions:darwin": ["@openjdk" + java_version + "_darwin_archive//:runtime"],
             "//src/conditions:windows": ["@openjdk" + java_version + "_windows_archive//:runtime"],
             "//src/conditions:linux": ["@openjdk" + java_version + "_linux_archive//:runtime"],
+            "//src/conditions:linux_s390x": ["@openjdk" + java_version + "_s390x_linux_archive//:runtime"],
         }),
         data = [
             ":test-deps",
@@ -536,6 +540,7 @@ sh_test(
             "//src/conditions:darwin": ["@openjdk" + java_version + "_darwin_archive//:runtime"],
             "//src/conditions:windows": ["@openjdk" + java_version + "_windows_archive//:runtime"],
             "//src/conditions:linux": ["@openjdk" + java_version + "_linux_archive//:runtime"],
+            "//src/conditions:linux_s390x": ["@openjdk" + java_version + "_s390x_linux_archive//:runtime"],
         }),
         data = [
             ":test-deps",
@@ -566,6 +571,7 @@ sh_test(
             "//src/conditions:darwin": ["@openjdk" + java_version + "_darwin_archive//:runtime"],
             "//src/conditions:windows": ["@openjdk" + java_version + "_windows_archive//:runtime"],
             "//src/conditions:linux": ["@openjdk" + java_version + "_linux_archive//:runtime"],
+            "//src/conditions:linux_s390x": ["@openjdk" + java_version + "_s390x_linux_archive//:runtime"],
         }),
         data = [
             ":test-deps",
