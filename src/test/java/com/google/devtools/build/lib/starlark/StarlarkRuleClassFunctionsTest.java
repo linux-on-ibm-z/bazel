@@ -309,8 +309,8 @@ public final class StarlarkRuleClassFunctionsTest extends BuildViewTestCase {
         """);
 
     Package pkg = getPackage("pkg");
-    assertThat(pkg.getMacros().keySet()).containsExactly("abc", "def", "ghi").inOrder();
-    assertThat(pkg.getMacros().get("abc").getMacroClass().getName()).isEqualTo("my_macro");
+    assertThat(pkg.getMacrosById().keySet()).containsExactly("abc:1", "def:1", "ghi:1").inOrder();
+    assertThat(pkg.getMacrosById().get("abc:1").getMacroClass().getName()).isEqualTo("my_macro");
   }
 
   @Test
@@ -4302,9 +4302,10 @@ public final class StarlarkRuleClassFunctionsTest extends BuildViewTestCase {
   public void initializer_failsCreatingAnotherRule() throws Exception {
     scratch.file(
         "initializer_testing/b.bzl",
+        analysisMock.javaSupport().getLoadStatementForRule("java_library"),
         """
         def initializer(name, srcs = [], deps = []):
-            native.java_library(name = "jl", srcs = ["a.java"])
+            java_library(name = "jl", srcs = ["a.java"])
             return {"srcs": srcs, "deps": deps}
 
         def impl(ctx):
@@ -4424,7 +4425,7 @@ public final class StarlarkRuleClassFunctionsTest extends BuildViewTestCase {
   @Test
   @SuppressWarnings("unchecked")
   public void initializer_nativeModule() throws Exception {
-    scratch.appendFile("MODULE.bazel", "module(name = 'my_mod', version = '1.2.3')");
+    scratch.overwriteFile("MODULE.bazel", "module(name = 'my_mod', version = '1.2.3')");
     scratch.file("initializer_testing/rules/BUILD");
     scratch.file(
         "initializer_testing/rules/b.bzl",

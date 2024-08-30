@@ -179,8 +179,6 @@ bazel_fragments["BazelConfigurarion$Options"] = fragment(
 
 bazel_fragments["BazelPythonConfiguration$Options"] = fragment(
     propagate = [
-        "//command_line_option:python2_path",
-        "//command_line_option:python3_path",
         "//command_line_option:python_top",
         "//command_line_option:python_path",
         "//command_line_option:experimental_python_import_all_repositories",
@@ -250,6 +248,7 @@ bazel_fragments["CoreOptions"] = fragment(
         "//command_line_option:experimental_exclude_defines_from_exec_config",
         "//command_line_option:experimental_exclude_starlark_flags_from_exec_config",
         "//command_line_option:experimental_propagate_custom_flag",
+        "//command_line_option:experimental_inprocess_symlink_creation",
     ],
     inputs = ["//command_line_option:features"],
     outputs = [

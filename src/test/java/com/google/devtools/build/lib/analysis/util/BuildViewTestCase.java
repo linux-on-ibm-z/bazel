@@ -542,7 +542,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
     return parser.getOptions(PackageOptions.class);
   }
 
-  private BuildLanguageOptions parseBuildLanguageOptions(String... options) throws Exception {
+  protected BuildLanguageOptions parseBuildLanguageOptions(String... options) throws Exception {
     OptionsParser parser =
         OptionsParser.builder().optionsClasses(BuildLanguageOptions.class).build();
     parser.parse(getDefaultBuildLanguageOptions());
@@ -552,9 +552,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
 
   protected List<String> getDefaultBuildLanguageOptions() throws Exception {
     ImmutableList.Builder<String> ans = ImmutableList.builder();
-    if (!analysisMock.isThisBazel()) {
-      ans.add("--experimental_google_legacy_api"); // For starlark java_binary;
-    }
+    ans.addAll(TestConstants.PRODUCT_SPECIFIC_BUILD_LANG_OPTIONS);
     ans.add("--enable_bzlmod");
     return ans.build();
   }
@@ -1189,6 +1187,16 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
             .addAll(ImmutableList.copyOf(lines))
             .build());
 
+    invalidatePackages();
+  }
+
+  /**
+   * Rewrites the MODULE.bazel file
+   *
+   * <p>Triggers Skyframe to reinitialize everything.
+   */
+  public void rewriteModuleDotBazel(String... lines) throws Exception {
+    scratch.overwriteFile("MODULE.bazel", lines);
     invalidatePackages();
   }
 
@@ -2057,7 +2065,7 @@ public abstract class BuildViewTestCase extends FoundationTestCase {
   protected static String getErrorMsgWrongAttributeValue(String value, String... expected) {
     return String.format(
         "has to be one of %s instead of '%s'",
-        StringUtil.joinEnglishList(ImmutableSet.copyOf(expected), "or", "'"), value);
+        StringUtil.joinEnglishListSingleQuoted(ImmutableSet.copyOf(expected)), value);
   }
 
   protected static String getErrorMsgMandatoryProviderMissing(

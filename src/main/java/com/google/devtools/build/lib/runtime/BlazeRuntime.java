@@ -43,9 +43,7 @@ import com.google.devtools.build.lib.bugreport.BugReport;
 import com.google.devtools.build.lib.bugreport.BugReporter;
 import com.google.devtools.build.lib.bugreport.Crash;
 import com.google.devtools.build.lib.bugreport.CrashContext;
-import com.google.devtools.build.lib.buildeventstream.BuildEvent.LocalFile.LocalFileType;
 import com.google.devtools.build.lib.buildeventstream.BuildEventArtifactUploader;
-import com.google.devtools.build.lib.buildeventstream.BuildEventArtifactUploader.UploadContext;
 import com.google.devtools.build.lib.buildeventstream.BuildEventProtocolOptions;
 import com.google.devtools.build.lib.buildtool.CommandPrecompleteEvent;
 import com.google.devtools.build.lib.buildtool.buildevent.ProfilerStartedEvent;
@@ -85,6 +83,7 @@ import com.google.devtools.build.lib.server.PidFileWatcher;
 import com.google.devtools.build.lib.server.RPCServer;
 import com.google.devtools.build.lib.server.ShutdownHooks;
 import com.google.devtools.build.lib.server.signal.InterruptSignalHandler;
+import com.google.devtools.build.lib.skyframe.serialization.ObjectCodecRegistry;
 import com.google.devtools.build.lib.util.AbruptExitException;
 import com.google.devtools.build.lib.util.CustomExitCodePublisher;
 import com.google.devtools.build.lib.util.CustomFailureDetailPublisher;
@@ -138,6 +137,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
@@ -194,6 +194,10 @@ public final class BlazeRuntime implements BugReport.BlazeRuntimeInterface {
   // Workspace state (currently exactly one workspace per server)
   private BlazeWorkspace workspace;
 
+  @Nullable // not all environments provide this
+  private Supplier<ObjectCodecRegistry> analysisCodecRegistrySupplier;
+  private final InstrumentationOutputFactory instrumentationOutputFactory;
+
   private BlazeRuntime(
       FileSystem fileSystem,
       QueryEnvironmentFactory queryEnvironmentFactory,
@@ -216,7 +220,8 @@ public final class BlazeRuntime implements BugReport.BlazeRuntimeInterface {
       String productName,
       BuildEventArtifactUploaderFactoryMap buildEventArtifactUploaderFactoryMap,
       ImmutableMap<String, AuthHeadersProvider> authHeadersProviderMap,
-      RepositoryRemoteExecutorFactory repositoryRemoteExecutorFactory) {
+      RepositoryRemoteExecutorFactory repositoryRemoteExecutorFactory,
+      InstrumentationOutputFactory instrumentationOutputFactory) {
     // Server state
     this.fileSystem = fileSystem;
     this.blazeModules = blazeModules;
@@ -246,6 +251,7 @@ public final class BlazeRuntime implements BugReport.BlazeRuntimeInterface {
     this.authHeadersProviderMap =
         Preconditions.checkNotNull(authHeadersProviderMap, "authHeadersProviderMap");
     this.repositoryRemoteExecutorFactory = repositoryRemoteExecutorFactory;
+    this.instrumentationOutputFactory = instrumentationOutputFactory;
   }
 
   public BlazeWorkspace initWorkspace(BlazeDirectories directories, BinTools binTools)
@@ -319,19 +325,29 @@ public final class BlazeRuntime implements BugReport.BlazeRuntimeInterface {
     ImmutableSet.Builder<ProfilerTask> profiledTasksBuilder = ImmutableSet.builder();
     Profiler.Format format = Format.JSON_TRACE_FILE_FORMAT;
     Path profilePath = null;
-    UploadContext streamingContext = null;
+    InstrumentationOutput profile = null;
     try {
       if (tracerEnabled) {
         if (options.profilePath == null) {
+          String profileName = "command.profile.gz";
           format = Format.JSON_TRACE_FILE_COMPRESSED_FORMAT;
           if (bepOptions != null && bepOptions.streamingLogFileUploads) {
-            BuildEventArtifactUploader buildEventArtifactUploader =
-                newUploader(env, bepOptions.buildEventUploadStrategy);
-            streamingContext = buildEventArtifactUploader.startUpload(LocalFileType.LOG, null);
-            out = streamingContext.getOutputStream();
+            profile =
+                instrumentationOutputFactory
+                    .createBuildEventArtifactInstrumentationOutputBuilder()
+                    .setName(profileName)
+                    .setUploader(newUploader(env, bepOptions.buildEventUploadStrategy))
+                    .build();
+            out = profile.createOutputStream();
           } else {
-            profilePath = workspace.getOutputBase().getRelative("command.profile.gz");
-            out = profilePath.getOutputStream();
+            profilePath = workspace.getOutputBase().getRelative(profileName);
+            profile =
+                instrumentationOutputFactory
+                    .createLocalInstrumentationOutputBuilder()
+                    .setName(profileName)
+                    .setPath(profilePath)
+                    .build();
+            out = profile.createOutputStream();
           }
         } else {
           format =
@@ -339,10 +355,18 @@ public final class BlazeRuntime implements BugReport.BlazeRuntimeInterface {
                   ? Format.JSON_TRACE_FILE_COMPRESSED_FORMAT
                   : Format.JSON_TRACE_FILE_FORMAT;
           profilePath = workspace.getWorkspace().getRelative(options.profilePath);
-          out = profilePath.getOutputStream(/* append= */ false, /* internal= */ true);
-        }
-        if (profilePath != null && options.announceProfilePath) {
-          eventHandler.handle(Event.info("Writing tracer profile to '" + profilePath + "'"));
+          profile =
+              instrumentationOutputFactory
+                  .createLocalInstrumentationOutputBuilder()
+                  .setName(
+                      (format == Format.JSON_TRACE_FILE_COMPRESSED_FORMAT)
+                          ? "command.profile.gz"
+                          : "command.profile.json")
+                  .setPath(profilePath)
+                  .build();
+          out =
+              ((LocalInstrumentationOutput) profile)
+                  .createOutputStream(/* append= */ false, /* internal= */ true);
         }
         for (ProfilerTask profilerTask : ProfilerTask.values()) {
           if (!profilerTask.isVfs()
@@ -443,7 +467,7 @@ public final class BlazeRuntime implements BugReport.BlazeRuntimeInterface {
     } catch (IOException e) {
       eventHandler.handle(Event.error("Error while creating profile file: " + e.getMessage()));
     }
-    return new ProfilerStartedEvent(profilePath, streamingContext, format);
+    return new ProfilerStartedEvent(profile);
   }
 
   public FileSystem getFileSystem() {
@@ -1452,6 +1476,20 @@ public final class BlazeRuntime implements BugReport.BlazeRuntimeInterface {
     return repositoryRemoteExecutorFactory;
   }
 
+  public void initAnalysisCodecRegistry(
+      Supplier<ObjectCodecRegistry> analysisCodecRegistrySupplier) {
+    this.analysisCodecRegistrySupplier = analysisCodecRegistrySupplier;
+  }
+
+  @Nullable
+  public ObjectCodecRegistry getAnalysisCodecRegistry() {
+    if (analysisCodecRegistrySupplier == null) {
+      return null;
+    }
+    // The first call to this method can be somewhat expensive so it is hidden behind a supplier.
+    return analysisCodecRegistrySupplier.get();
+  }
+
   /**
    * A builder for {@link BlazeRuntime} objects. The only required fields are the {@link
    * BlazeDirectories}, and the {@link com.google.devtools.build.lib.packages.RuleClassProvider}
@@ -1578,7 +1616,13 @@ public final class BlazeRuntime implements BugReport.BlazeRuntimeInterface {
               productName,
               serverBuilder.getBuildEventArtifactUploaderMap(),
               serverBuilder.getAuthHeadersProvidersMap(),
-              serverBuilder.getRepositoryRemoteExecutorFactory());
+              serverBuilder.getRepositoryRemoteExecutorFactory(),
+              new InstrumentationOutputFactory.Builder()
+                  .setLocalInstrumentationOutputBuilderSupplier(
+                      LocalInstrumentationOutput.Builder::new)
+                  .setBuildEventArtifactInstrumentationOutputBuilderSupplier(
+                      BuildEventArtifactInstrumentationOutput.Builder::new)
+                  .build());
       AutoProfiler.setClock(runtime.getClock());
       BugReport.setRuntime(runtime);
       return runtime;

@@ -59,7 +59,9 @@ import com.google.devtools.build.skyframe.SkyFunction.Environment;
 import com.google.devtools.build.skyframe.SkyFunctionException.Transience;
 import com.google.devtools.build.skyframe.SkyKey;
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import javax.annotation.Nullable;
@@ -121,40 +123,31 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
   }
 
   private record FetchArgs(
-      Rule rule,
-      Path outputDirectory,
-      BlazeDirectories directories,
-      Environment env,
-      Map<RepoRecordedInput, String> recordedInputValues,
-      SkyKey key) {
-    FetchArgs toWorkerArgs(Environment env, Map<RepoRecordedInput, String> recordedInputValues) {
-      return new FetchArgs(rule, outputDirectory, directories, env, recordedInputValues, key);
+      Rule rule, Path outputDirectory, BlazeDirectories directories, Environment env, SkyKey key) {
+    FetchArgs toWorkerArgs(Environment env) {
+      return new FetchArgs(rule, outputDirectory, directories, env, key);
     }
   }
 
   @Nullable
   @Override
-  public RepositoryDirectoryValue.Builder fetch(
-      Rule rule,
-      Path outputDirectory,
-      BlazeDirectories directories,
-      Environment env,
-      Map<RepoRecordedInput, String> recordedInputValues,
-      SkyKey key)
+  public FetchResult fetch(
+      Rule rule, Path outputDirectory, BlazeDirectories directories, Environment env, SkyKey key)
       throws RepositoryFunctionException, InterruptedException {
-    var args = new FetchArgs(rule, outputDirectory, directories, env, recordedInputValues, key);
+    var args = new FetchArgs(rule, outputDirectory, directories, env, key);
     if (!useWorkers) {
       return fetchInternal(args);
     }
     // See below (the `catch CancellationException` clause) for why there's a `while` loop here.
     while (true) {
-      var state = env.getState(() -> new RepoFetchingSkyKeyComputeState(rule.getName()));
-      ListenableFuture<RepositoryDirectoryValue.Builder> workerFuture =
+      var state = env.getState(WorkerSkyKeyComputeState<FetchResult>::new);
+      ListenableFuture<FetchResult> workerFuture =
           state.getOrStartWorker(
+              "starlark-repository-" + rule.getName(),
               () -> {
-                Environment workerEnv = new RepoFetchingWorkerSkyFunctionEnvironment(state);
+                Environment workerEnv = new WorkerSkyFunctionEnvironment(state);
                 setupRepoRoot(outputDirectory);
-                return fetchInternal(args.toWorkerArgs(workerEnv, state.recordedInputValues));
+                return fetchInternal(args.toWorkerArgs(workerEnv));
               });
       try {
         state.delegateEnvQueue.put(env);
@@ -164,9 +157,7 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
           // null to trigger a Skyframe restart, but *don't* shut down the worker executor.
           return null;
         }
-        RepositoryDirectoryValue.Builder result = workerFuture.get();
-        recordedInputValues.putAll(state.recordedInputValues);
-        return result;
+        return workerFuture.get();
       } catch (ExecutionException e) {
         Throwables.throwIfInstanceOf(e.getCause(), RepositoryFunctionException.class);
         Throwables.throwIfUnchecked(e.getCause());
@@ -196,32 +187,22 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
   }
 
   @Nullable
-  private RepositoryDirectoryValue.Builder fetchInternal(FetchArgs args)
+  private FetchResult fetchInternal(FetchArgs args)
       throws RepositoryFunctionException, InterruptedException {
-    return fetchInternal(
-        args.rule,
-        args.outputDirectory,
-        args.directories,
-        args.env,
-        args.recordedInputValues,
-        args.key);
+    return fetchInternal(args.rule, args.outputDirectory, args.directories, args.env, args.key);
   }
 
   @Nullable
-  private RepositoryDirectoryValue.Builder fetchInternal(
-      Rule rule,
-      Path outputDirectory,
-      BlazeDirectories directories,
-      Environment env,
-      Map<RepoRecordedInput, String> recordedInputValues,
-      SkyKey key)
+  private FetchResult fetchInternal(
+      Rule rule, Path outputDirectory, BlazeDirectories directories, Environment env, SkyKey key)
       throws RepositoryFunctionException, InterruptedException {
 
     String defInfo = RepositoryResolvedEvent.getRuleDefinitionInformation(rule);
     env.getListener().post(new StarlarkRepositoryDefinitionLocationEvent(rule.getName(), defInfo));
 
     StarlarkCallable function = rule.getRuleClassObject().getConfiguredTargetFunction();
-    if (declareEnvironmentDependencies(recordedInputValues, env, getEnviron(rule)) == null) {
+    ImmutableMap<String, Optional<String>> envVarValues = getEnvVarValues(env, getEnviron(rule));
+    if (envVarValues == null) {
       return null;
     }
     StarlarkSemantics starlarkSemantics = PrecomputedValue.STARLARK_SEMANTICS.get(env);
@@ -262,6 +243,7 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
     }
     ImmutableSet<PathFragment> ignoredPatterns = checkNotNull(ignoredPackagesValue).getPatterns();
 
+    Map<RepoRecordedInput, String> recordedInputValues = new LinkedHashMap<>();
     try (Mutability mu = Mutability.create("Starlark repository");
         StarlarkRepositoryContext starlarkRepositoryContext =
             new StarlarkRepositoryContext(
@@ -301,15 +283,6 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
         PrecomputedValue.REMOTE_EXECUTION_ENABLED.get(env);
       }
 
-      // Since restarting a repository function can be really expensive, we first ensure that
-      // all label-arguments can be resolved to paths.
-      try {
-        starlarkRepositoryContext.enforceLabelAttributes();
-      } catch (NeedsSkyframeRestartException e) {
-        // Missing values are expected; just restart before we actually start the rule
-        return null;
-      }
-
       // This rule is mainly executed for its side effect. Nevertheless, the return value is
       // of importance, as it provides information on how the call has to be modified to be a
       // reproducible rule.
@@ -340,6 +313,8 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
 
       // Modify marker data to include the files/dirents/env vars used by the rule's implementation
       // function.
+      recordedInputValues.putAll(
+          Maps.transformValues(RepoRecordedInput.EnvVar.wrap(envVarValues), v -> v.orElse(null)));
       recordedInputValues.putAll(starlarkRepositoryContext.getRecordedFileInputs());
       recordedInputValues.putAll(starlarkRepositoryContext.getRecordedDirentsInputs());
       recordedInputValues.putAll(starlarkRepositoryContext.getRecordedDirTreeInputs());
@@ -362,6 +337,7 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
       env.getListener()
           .handle(
               Event.error(
+                  e.getInnermostLocation(),
                   "An error occurred during the fetch of repository '"
                       + rule.getName()
                       + "':\n   "
@@ -403,7 +379,8 @@ public final class StarlarkRepositoryFunction extends RepositoryFunction {
       }
     }
 
-    return RepositoryDirectoryValue.builder().setPath(outputDirectory);
+    return new FetchResult(
+        RepositoryDirectoryValue.builder().setPath(outputDirectory), recordedInputValues);
   }
 
   @SuppressWarnings("unchecked")

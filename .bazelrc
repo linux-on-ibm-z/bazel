@@ -1,4 +1,5 @@
 common --enable_platform_specific_config
+common --incompatible_use_plus_in_repo_names
 
 # Shared configuration flags to build and test Bazel on RBE.
 build:remote_shared --remote_instance_name=projects/bazel-untrusted/instances/default_instance
@@ -33,6 +34,9 @@ common --check_direct_dependencies=error
 
 # Add mirrors for certain download URLs
 common --experimental_downloader_config=bazel_downloader.cfg
+
+# Enable WORKSPACE functionality for android dependencies in WORKSPACE.bzlmod
+common --enable_workspace
 
 # Enable modern C++ features
 build:linux --cxxopt=-std=c++17

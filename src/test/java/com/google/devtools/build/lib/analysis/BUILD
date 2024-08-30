@@ -33,6 +33,7 @@ java_library(
         exclude = [
             "AbstractConfiguredTargetTest.java",
             "AbstractRunfilesSupportTest.java",
+            "AnalysisFailureInfoTest.java",
             "AnalysisUtilsTest.java",
             "CachingTest.java",
             "ConfiguredTargetTransitivePackagesTest.java",
@@ -42,7 +43,7 @@ java_library(
             "RuleConfiguredTargetTest.java",
             "RunfilesRepoMappingManifestTest.java",
             "SourceManifestActionTest.java",
-            "AnalysisFailureInfoTest.java",
+            "SymbolicMacroTest.java",
         ],
     ),
     deps = [
@@ -116,6 +117,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/analysis:transitive_info_provider",
         "//src/main/java/com/google/devtools/build/lib/analysis:transitive_info_provider_map_impl",
         "//src/main/java/com/google/devtools/build/lib/analysis:view_creation_failed_exception",
+        "//src/main/java/com/google/devtools/build/lib/analysis:visibility_provider",
         "//src/main/java/com/google/devtools/build/lib/analysis/platform",
         "//src/main/java/com/google/devtools/build/lib/analysis/stringtemplate",
         "//src/main/java/com/google/devtools/build/lib/buildeventstream",
@@ -363,6 +365,24 @@ java_test(
 )
 
 java_test(
+    name = "SymbolicMacroTest",
+    srcs = ["SymbolicMacroTest.java"],
+    deps = [
+        "//src/main/java/com/google/devtools/build/lib/analysis:configured_target",
+        "//src/main/java/com/google/devtools/build/lib/analysis:test/analysis_failure",
+        "//src/main/java/com/google/devtools/build/lib/analysis:test/analysis_failure_info",
+        "//src/main/java/com/google/devtools/build/lib/cmdline",
+        "//src/main/java/com/google/devtools/build/lib/packages",
+        "//src/test/java/com/google/devtools/build/lib/analysis/util",
+        "//third_party:error_prone_annotations",
+        "//third_party:jsr305",
+        "//third_party:junit4",
+        "//third_party:truth",
+        "@maven//:com_google_testparameterinjector_test_parameter_injector",
+    ],
+)
+
+java_test(
     name = "TransitiveValidationPropagationTest",
     srcs = ["TransitiveValidationPropagationTest.java"],
     deps = [
@@ -417,6 +437,7 @@ test_suite(
     name = "AllAnalysisTests",
     tests = [
         ":AbstractConfiguredTargetTest",
+        ":AnalysisFailureInfoTest",
         ":AnalysisTests",
         ":AnalysisUtilsTest",
         ":CachingTest",
@@ -426,5 +447,6 @@ test_suite(
         ":PackageGroupBuildViewTest",
         ":RuleConfiguredTargetTest",
         ":SourceManifestActionTest",
+        ":SymbolicMacroTest",
     ],
 )

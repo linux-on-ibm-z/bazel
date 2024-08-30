@@ -128,6 +128,7 @@ sh_test(
     ],
     tags = [
         "no_windows",  # darwin-specific test
+        "requires-network",  # For Bzlmod
     ],
 )
 
@@ -832,13 +833,6 @@ sh_test(
     name = "cross_repository_test",
     size = "large",
     srcs = ["cross_repository_test.sh"],
-    data = [":test-deps"],
-    tags = ["no_windows"],
-)
-
-sh_test(
-    name = "starlark_prefetching_test",
-    srcs = ["starlark_prefetching_test.sh"],
     data = [":test-deps"],
     tags = ["no_windows"],
 )

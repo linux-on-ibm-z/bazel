@@ -14,7 +14,6 @@
 
 package com.google.devtools.build.lib.bazel.rules;
 
-import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
@@ -37,17 +36,10 @@ import com.google.devtools.build.lib.analysis.config.FragmentOptions;
 import com.google.devtools.build.lib.analysis.config.RequiresOptions;
 import com.google.devtools.build.lib.bazel.BazelConfiguration;
 import com.google.devtools.build.lib.bazel.repository.LocalConfigPlatformRule;
-import com.google.devtools.build.lib.bazel.rules.android.AndroidNdkRepositoryRule;
 import com.google.devtools.build.lib.bazel.rules.android.AndroidSdkRepositoryRule;
-import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidBinaryRule;
-import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidDeviceScriptFixture;
-import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidHostServiceFixture;
-import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidLibraryRule;
-import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidLocalTestRule;
 import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidSdkRule;
 import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidSemantics;
 import com.google.devtools.build.lib.bazel.rules.android.BazelAndroidToolsDefaultsJarRule;
-import com.google.devtools.build.lib.bazel.rules.android.BazelDexArchiveAspect;
 import com.google.devtools.build.lib.bazel.rules.android.BazelSdkToolchainRule;
 import com.google.devtools.build.lib.bazel.rules.python.BazelPyBinaryRule;
 import com.google.devtools.build.lib.bazel.rules.python.BazelPyBuiltins;
@@ -62,27 +54,21 @@ import com.google.devtools.build.lib.rules.android.AndroidBinaryDataInfo;
 import com.google.devtools.build.lib.rules.android.AndroidBinaryNativeLibsInfo;
 import com.google.devtools.build.lib.rules.android.AndroidCcLinkParamsProvider;
 import com.google.devtools.build.lib.rules.android.AndroidConfiguration;
-import com.google.devtools.build.lib.rules.android.AndroidDeviceScriptFixtureRule;
 import com.google.devtools.build.lib.rules.android.AndroidDexInfo;
 import com.google.devtools.build.lib.rules.android.AndroidFeatureFlagSetProvider;
-import com.google.devtools.build.lib.rules.android.AndroidHostServiceFixtureRule;
 import com.google.devtools.build.lib.rules.android.AndroidIdeInfoProvider;
 import com.google.devtools.build.lib.rules.android.AndroidIdlProvider;
 import com.google.devtools.build.lib.rules.android.AndroidInstrumentationInfo;
 import com.google.devtools.build.lib.rules.android.AndroidLibraryAarInfo;
-import com.google.devtools.build.lib.rules.android.AndroidLibraryBaseRule;
 import com.google.devtools.build.lib.rules.android.AndroidLibraryResourceClassJarProvider;
-import com.google.devtools.build.lib.rules.android.AndroidLocalTestBaseRule;
 import com.google.devtools.build.lib.rules.android.AndroidManifestInfo;
 import com.google.devtools.build.lib.rules.android.AndroidNativeLibsInfo;
 import com.google.devtools.build.lib.rules.android.AndroidNeverLinkLibrariesProvider;
-import com.google.devtools.build.lib.rules.android.AndroidNeverlinkAspect;
 import com.google.devtools.build.lib.rules.android.AndroidOptimizationInfo;
 import com.google.devtools.build.lib.rules.android.AndroidOptimizedJarInfo;
 import com.google.devtools.build.lib.rules.android.AndroidPreDexJarProvider;
 import com.google.devtools.build.lib.rules.android.AndroidProguardInfo;
 import com.google.devtools.build.lib.rules.android.AndroidResourcesInfo;
-import com.google.devtools.build.lib.rules.android.AndroidRuleClasses;
 import com.google.devtools.build.lib.rules.android.AndroidRuleClasses.AndroidBaseToolsDefaultsJarRule;
 import com.google.devtools.build.lib.rules.android.AndroidSdkBaseRule;
 import com.google.devtools.build.lib.rules.android.AndroidSdkProvider;
@@ -90,7 +76,6 @@ import com.google.devtools.build.lib.rules.android.AndroidStarlarkCommon;
 import com.google.devtools.build.lib.rules.android.ApkInfo;
 import com.google.devtools.build.lib.rules.android.BaselineProfileProvider;
 import com.google.devtools.build.lib.rules.android.BazelAndroidConfiguration;
-import com.google.devtools.build.lib.rules.android.DexArchiveAspect;
 import com.google.devtools.build.lib.rules.android.ProguardMappingProvider;
 import com.google.devtools.build.lib.rules.android.databinding.DataBindingV2Provider;
 import com.google.devtools.build.lib.rules.config.ConfigRules;
@@ -335,35 +320,15 @@ public class BazelRuleClassProvider {
       new RuleSet() {
         @Override
         public void init(ConfiguredRuleClassProvider.Builder builder) {
-          RepositoryName toolsRepository = checkNotNull(builder.getToolsRepository());
 
           builder.addConfigurationFragment(AndroidConfiguration.class);
           builder.addConfigurationFragment(BazelAndroidConfiguration.class);
 
-          AndroidNeverlinkAspect androidNeverlinkAspect = new AndroidNeverlinkAspect();
-          DexArchiveAspect dexArchiveAspect = new BazelDexArchiveAspect(toolsRepository);
-          builder.addNativeAspectClass(androidNeverlinkAspect);
-          builder.addNativeAspectClass(dexArchiveAspect);
-
+          builder.addRuleDefinition(new AndroidBaseToolsDefaultsJarRule());
           builder.addRuleDefinition(new AndroidSdkBaseRule());
           builder.addRuleDefinition(new BazelAndroidSdkRule());
-          builder.addRuleDefinition(new AndroidBaseToolsDefaultsJarRule());
           builder.addRuleDefinition(new BazelAndroidToolsDefaultsJarRule());
-          builder.addRuleDefinition(new AndroidRuleClasses.AndroidBaseRule());
-          builder.addRuleDefinition(new AndroidRuleClasses.AndroidResourceSupportRule());
-          builder.addRuleDefinition(
-              new AndroidRuleClasses.AndroidBinaryBaseRule(
-                  androidNeverlinkAspect, dexArchiveAspect));
           builder.addRuleDefinition(new BazelSdkToolchainRule());
-          builder.addRuleDefinition(new AndroidLibraryBaseRule(androidNeverlinkAspect));
-          builder.addRuleDefinition(new BazelAndroidLibraryRule());
-          builder.addRuleDefinition(new BazelAndroidBinaryRule());
-          builder.addRuleDefinition(new AndroidLocalTestBaseRule());
-          builder.addRuleDefinition(new BazelAndroidLocalTestRule());
-          builder.addRuleDefinition(
-              new AndroidDeviceScriptFixtureRule(BazelAndroidDeviceScriptFixture.class));
-          builder.addRuleDefinition(
-              new AndroidHostServiceFixtureRule(BazelAndroidHostServiceFixture.class));
 
           AndroidBootstrap bootstrap =
               new AndroidBootstrap(
@@ -457,7 +422,6 @@ public class BazelRuleClassProvider {
           // TODO(ulfjack): Split this up by conceptual units.
           builder.addRuleDefinition(new NewLocalRepositoryRule());
           builder.addRuleDefinition(new AndroidSdkRepositoryRule());
-          builder.addRuleDefinition(new AndroidNdkRepositoryRule());
           builder.addRuleDefinition(new LocalConfigPlatformRule());
 
           try {

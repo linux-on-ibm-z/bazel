@@ -28,8 +28,8 @@ import static com.google.devtools.build.lib.remote.util.Utils.getInMemoryOutputP
 import static com.google.devtools.build.lib.remote.util.Utils.grpcAwareErrorMessage;
 import static com.google.devtools.build.lib.remote.util.Utils.shouldUploadLocalResultsToRemoteCache;
 import static com.google.devtools.build.lib.remote.util.Utils.waitForBulkTransfer;
-import static com.google.devtools.build.lib.util.StringUtil.decodeBytestringUtf8;
-import static com.google.devtools.build.lib.util.StringUtil.encodeBytestringUtf8;
+import static com.google.devtools.build.lib.util.StringUtil.reencodeExternalToInternal;
+import static com.google.devtools.build.lib.util.StringUtil.reencodeInternalToExternal;
 
 import build.bazel.remote.execution.v2.Action;
 import build.bazel.remote.execution.v2.ActionResult;
@@ -53,7 +53,6 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -103,12 +102,12 @@ import com.google.devtools.build.lib.remote.merkletree.MerkleTree;
 import com.google.devtools.build.lib.remote.options.RemoteOptions;
 import com.google.devtools.build.lib.remote.salt.CacheSalt;
 import com.google.devtools.build.lib.remote.util.DigestUtil;
-import com.google.devtools.build.lib.remote.util.TempPathGenerator;
 import com.google.devtools.build.lib.remote.util.TracingMetadataUtils;
 import com.google.devtools.build.lib.remote.util.Utils;
 import com.google.devtools.build.lib.remote.util.Utils.InMemoryOutput;
 import com.google.devtools.build.lib.server.FailureDetails.RemoteExecution;
 import com.google.devtools.build.lib.util.Fingerprint;
+import com.google.devtools.build.lib.util.TempPathGenerator;
 import com.google.devtools.build.lib.util.io.FileOutErr;
 import com.google.devtools.build.lib.vfs.FileSystem;
 import com.google.devtools.build.lib.vfs.FileSystemUtils;
@@ -250,7 +249,8 @@ public class RemoteExecutionService {
     ArrayList<String> outputDirectories = new ArrayList<>();
     ArrayList<String> outputPaths = new ArrayList<>();
     for (ActionInput output : outputs) {
-      String pathString = decodeBytestringUtf8(remotePathResolver.localPathToOutputPath(output));
+      String pathString =
+          reencodeInternalToExternal(remotePathResolver.localPathToOutputPath(output));
       if (output.isDirectory()) {
         outputDirectories.add(pathString);
       } else {
@@ -272,22 +272,18 @@ public class RemoteExecutionService {
       if (spawnScrubber != null) {
         arg = spawnScrubber.transformArgument(arg);
       }
-      command.addArguments(decodeBytestringUtf8(arg));
+      command.addArguments(reencodeInternalToExternal(arg));
     }
     // Sorting the environment pairs by variable name.
     TreeSet<String> variables = new TreeSet<>(env.keySet());
     for (String var : variables) {
       command
           .addEnvironmentVariablesBuilder()
-          .setName(decodeBytestringUtf8(var))
-          .setValue(decodeBytestringUtf8(env.get(var)));
+          .setName(reencodeInternalToExternal(var))
+          .setValue(reencodeInternalToExternal(env.get(var)));
     }
 
-    String workingDirectory = remotePathResolver.getWorkingDirectory();
-    if (!Strings.isNullOrEmpty(workingDirectory)) {
-      command.setWorkingDirectory(decodeBytestringUtf8(workingDirectory));
-    }
-    return command.build();
+    return command.setWorkingDirectory(remotePathResolver.getWorkingDirectory()).build();
   }
 
   private static boolean useRemoteCache(RemoteOptions options) {
@@ -802,12 +798,12 @@ public class RemoteExecutionService {
       ListenableFuture<Void> future =
           remoteCache.downloadFile(
               context,
-              remotePathResolver.localPathToOutputPath(file.path()),
+              reencodeInternalToExternal(remotePathResolver.localPathToOutputPath(file.path())),
               tmpPath,
               file.digest(),
               new RemoteCache.DownloadProgressReporter(
                   progressStatusListener,
-                  remotePathResolver.localPathToOutputPath(file.path()),
+                  reencodeInternalToExternal(remotePathResolver.localPathToOutputPath(file.path())),
                   file.digest().getSizeBytes()));
       return transform(future, (d) -> file, directExecutor());
     } catch (IOException e) {
@@ -1034,9 +1030,9 @@ public class RemoteExecutionService {
     Map<Path, ListenableFuture<Tree>> dirMetadataDownloads =
         Maps.newHashMapWithExpectedSize(result.getOutputDirectoriesCount());
     for (OutputDirectory dir : result.getOutputDirectories()) {
-      var outputPath = encodeBytestringUtf8(dir.getPath());
+      var outputPath = dir.getPath();
       dirMetadataDownloads.put(
-          remotePathResolver.outputPathToLocalPath(outputPath),
+          remotePathResolver.outputPathToLocalPath(reencodeExternalToInternal(outputPath)),
           Futures.transformAsync(
               remoteCache.downloadBlob(context, outputPath, dir.getTreeDigest()),
               (treeBytes) ->
@@ -1062,7 +1058,8 @@ public class RemoteExecutionService {
     ImmutableMap.Builder<Path, FileMetadata> files = ImmutableMap.builder();
     for (OutputFile outputFile : result.getOutputFiles()) {
       Path localPath =
-          remotePathResolver.outputPathToLocalPath(encodeBytestringUtf8(outputFile.getPath()));
+          remotePathResolver.outputPathToLocalPath(
+              reencodeExternalToInternal(outputFile.getPath()));
       files.put(
           localPath,
           new FileMetadata(localPath, outputFile.getDigest(), outputFile.getIsExecutable()));
@@ -1076,8 +1073,8 @@ public class RemoteExecutionService {
             result.getOutputSymlinks());
     for (var symlink : outputSymlinks) {
       var localPath =
-          remotePathResolver.outputPathToLocalPath(encodeBytestringUtf8(symlink.getPath()));
-      var target = PathFragment.create(symlink.getTarget());
+          remotePathResolver.outputPathToLocalPath(reencodeExternalToInternal(symlink.getPath()));
+      var target = PathFragment.create(reencodeExternalToInternal(symlink.getTarget()));
       var existingMetadata = symlinkMap.get(localPath);
       if (existingMetadata != null) {
         if (!target.equals(existingMetadata.target())) {
@@ -1333,6 +1330,14 @@ public class RemoteExecutionService {
   public static final class LocalExecution {
     private final RemoteAction action;
     private final SettableFuture<SpawnResult> spawnResultFuture;
+    private final Phaser spawnResultConsumers =
+        new Phaser(1) {
+          @Override
+          protected boolean onAdvance(int phase, int registeredParties) {
+            // We only use a single phase.
+            return true;
+          }
+        };
 
     private LocalExecution(RemoteAction action) {
       this.action = action;
@@ -1354,6 +1359,37 @@ public class RemoteExecutionService {
         return null;
       }
       return new LocalExecution(action);
+    }
+
+    /**
+     * Attempts to register a thread waiting for the {@link #spawnResultFuture} to become available
+     * and returns true if successful.
+     *
+     * <p>Every call to this method must be matched by a call to {@link #unregister()} via
+     * try-finally.
+     *
+     * <p>This always returns true for actions that do not modify their spawns' outputs after
+     * execution.
+     */
+    public boolean registerForOutputReuse() {
+      // We only use a single phase.
+      return spawnResultConsumers.register() == 0;
+    }
+
+    /**
+     * Unregisters a thread waiting for the {@link #spawnResultFuture}, either after successful
+     * reuse of the outputs or upon failure.
+     */
+    public void unregister() {
+      spawnResultConsumers.arriveAndDeregister();
+    }
+
+    /**
+     * Waits for all potential consumers of the {@link #spawnResultFuture} to be done with their
+     * output reuse.
+     */
+    public void awaitAllOutputReuse() {
+      spawnResultConsumers.arriveAndAwaitAdvance();
     }
 
     /**
@@ -1422,55 +1458,64 @@ public class RemoteExecutionService {
         previousExecution.action.getSpawn().getOutputFiles().stream()
             .collect(toImmutableMap(output -> execRoot.getRelative(output.getExecPath()), o -> o));
     Map<Path, Path> realToTmpPath = new HashMap<>();
-    for (String output : action.getCommand().getOutputPathsList()) {
-      Path sourcePath =
-          previousExecution
-              .action
-              .getRemotePathResolver()
-              .outputPathToLocalPath(encodeBytestringUtf8(output));
-      ActionInput outputArtifact = previousOutputs.get(sourcePath);
-      Path tmpPath = tempPathGenerator.generateTempPath();
-      tmpPath.getParentDirectory().createDirectoryAndParents();
-      try {
-        if (outputArtifact.isDirectory()) {
-          tmpPath.createDirectory();
-          FileSystemUtils.copyTreesBelow(sourcePath, tmpPath, Symlinks.NOFOLLOW);
-        } else if (outputArtifact.isSymlink()) {
-          FileSystemUtils.ensureSymbolicLink(tmpPath, sourcePath.readSymbolicLink());
-        } else {
-          FileSystemUtils.copyFile(sourcePath, tmpPath);
-        }
-      } catch (FileNotFoundException e) {
-        // The spawn this action was deduplicated against failed to create an output file. If the
-        // output is mandatory, we cannot reuse the previous execution.
-        if (action.getSpawn().isMandatoryOutput(outputArtifact)) {
-          return null;
+    try {
+      for (String output : action.getCommand().getOutputPathsList()) {
+        String reencodedOutput = reencodeExternalToInternal(output);
+        Path sourcePath =
+            previousExecution.action.getRemotePathResolver().outputPathToLocalPath(reencodedOutput);
+        ActionInput outputArtifact = previousOutputs.get(sourcePath);
+        Path tmpPath = tempPathGenerator.generateTempPath();
+        tmpPath.getParentDirectory().createDirectoryAndParents();
+        try {
+          if (outputArtifact.isDirectory()) {
+            tmpPath.createDirectory();
+            FileSystemUtils.copyTreesBelow(sourcePath, tmpPath, Symlinks.NOFOLLOW);
+          } else if (outputArtifact.isSymlink()) {
+            FileSystemUtils.ensureSymbolicLink(tmpPath, sourcePath.readSymbolicLink());
+          } else {
+            FileSystemUtils.copyFile(sourcePath, tmpPath);
+          }
+
+          Path targetPath = action.getRemotePathResolver().outputPathToLocalPath(reencodedOutput);
+          realToTmpPath.put(targetPath, tmpPath);
+        } catch (FileNotFoundException e) {
+          // The spawn this action was deduplicated against failed to create an output file. If the
+          // output is mandatory, we cannot reuse the previous execution.
+          if (action.getSpawn().isMandatoryOutput(outputArtifact)) {
+            return null;
+          }
         }
       }
 
-      Path targetPath =
-          action.getRemotePathResolver().outputPathToLocalPath(encodeBytestringUtf8(output));
-      realToTmpPath.put(targetPath, tmpPath);
+      // TODO: FileOutErr is action-scoped, not spawn-scoped, but this is not a problem for the
+      //  current use case of supporting deduplication of path mapped spawns:
+      //  1. Starlark and C++ compilation actions always create a single spawn.
+      //  2. Java compilation actions may run a fallback spawn, but reset the FileOutErr before
+      //     running it.
+      //  If this changes, we will need to introduce a spawn-scoped OutErr.
+      FileOutErr.dump(
+          previousExecution.action.getSpawnExecutionContext().getFileOutErr(),
+          action.getSpawnExecutionContext().getFileOutErr());
+
+      action
+          .getSpawnExecutionContext()
+          .lockOutputFiles(
+              previousSpawnResult.exitCode(),
+              previousSpawnResult.getFailureMessage(),
+              action.getSpawnExecutionContext().getFileOutErr());
+      // All outputs are created locally.
+      moveOutputsToFinalLocation(realToTmpPath.keySet(), realToTmpPath);
+    } catch (InterruptedException | IOException e) {
+      // Delete any copied output files.
+      try {
+        for (Path tmpPath : realToTmpPath.values()) {
+          tmpPath.delete();
+        }
+      } catch (IOException ignored) {
+        // Best effort, will be cleaned up at server restart.
+      }
+      throw e;
     }
-
-    // TODO: FileOutErr is action-scoped, not spawn-scoped, but this is not a problem for the
-    //  current use case of supporting deduplication of path mapped spawns:
-    //  1. Starlark and C++ compilation actions always create a single spawn.
-    //  2. Java compilation actions may run a fallback spawn, but reset the FileOutErr before
-    //     running it.
-    //  If this changes, we will need to introduce a spawn-scoped OutErr.
-    FileOutErr.dump(
-        previousExecution.action.getSpawnExecutionContext().getFileOutErr(),
-        action.getSpawnExecutionContext().getFileOutErr());
-
-    action
-        .getSpawnExecutionContext()
-        .lockOutputFiles(
-            previousSpawnResult.exitCode(),
-            previousSpawnResult.getFailureMessage(),
-            action.getSpawnExecutionContext().getFileOutErr());
-    // All outputs are created locally.
-    moveOutputsToFinalLocation(realToTmpPath.keySet(), realToTmpPath);
 
     return previousSpawnResult;
   }
@@ -1559,7 +1604,8 @@ public class RemoteExecutionService {
         SpawnResult.Status.SUCCESS.equals(spawnResult.status()) && spawnResult.exitCode() == 0,
         "shouldn't upload outputs of failed local action");
 
-    if (remoteOptions.remoteCacheAsync) {
+    if (remoteOptions.remoteCacheAsync
+        && !action.getSpawn().getResourceOwner().mayModifySpawnOutputsAfterExecution()) {
       Single.using(
               remoteCache::retain,
               remoteCache ->

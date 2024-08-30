@@ -35,7 +35,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import javax.annotation.Nullable;
@@ -142,11 +142,7 @@ public class UnixFileSystem extends AbstractFileSystemWithCustomStat {
     } finally {
       profiler.logSimpleTask(startTime, ProfilerTask.VFS_DIR, name);
     }
-    Collection<String> result = new ArrayList<>(entries.length);
-    for (String entry : entries) {
-      result.add(entry);
-    }
-    return result;
+    return Arrays.asList(entries);
   }
 
   @Override
@@ -355,9 +351,10 @@ public class UnixFileSystem extends AbstractFileSystemWithCustomStat {
   public boolean createDirectory(PathFragment path) throws IOException {
     var comp = Blocker.begin();
     try {
+      // Use 0777 so that the permissions can be overridden by umask(2).
       // Note: UNIX mkdir(2), FilesystemUtils.mkdir() and createDirectory all
       // have different ways of representing failure!
-      if (NativePosixFiles.mkdir(path.toString(), 0755)) {
+      if (NativePosixFiles.mkdir(path.toString(), 0777)) {
         return true; // successfully created
       }
     } finally {
@@ -386,7 +383,8 @@ public class UnixFileSystem extends AbstractFileSystemWithCustomStat {
   public void createDirectoryAndParents(PathFragment path) throws IOException {
     var comp = Blocker.begin();
     try {
-      NativePosixFiles.mkdirs(path.toString(), 0755);
+      // Use 0777 so that the permissions can be overridden by umask(2).
+      NativePosixFiles.mkdirs(path.toString(), 0777);
     } finally {
       Blocker.end(comp);
     }

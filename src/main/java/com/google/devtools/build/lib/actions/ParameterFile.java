@@ -106,18 +106,12 @@ public class ParameterFile {
       throws IOException {
     OutputStream bufferedOut = new BufferedOutputStream(out);
     switch (type) {
-      case SHELL_QUOTED:
-        writeContent(bufferedOut, ShellEscaper.escapeAll(arguments), charset);
-        break;
-      case GCC_QUOTED:
-        writeContent(bufferedOut, GccParamFileEscaper.escapeAll(arguments), charset);
-        break;
-      case UNQUOTED:
-        writeContent(bufferedOut, arguments, charset);
-        break;
-      case WINDOWS:
-        writeContent(bufferedOut, WindowsParamFileEscaper.escapeAll(arguments), charset);
-        break;
+      case SHELL_QUOTED -> writeContent(bufferedOut, ShellEscaper.escapeAll(arguments), charset);
+      case GCC_QUOTED ->
+          writeContent(bufferedOut, GccParamFileEscaper.escapeAll(arguments), charset);
+      case UNQUOTED -> writeContent(bufferedOut, arguments, charset);
+      case WINDOWS ->
+          writeContent(bufferedOut, WindowsParamFileEscaper.escapeAll(arguments), charset);
     }
   }
 
@@ -177,7 +171,7 @@ public class ParameterFile {
       byte[] bytes = stringUnsafe.getByteArray(line);
       if (stringUnsafe.getCoder(line) == StringUnsafe.LATIN1 && isAscii(bytes)) {
         outputStream.write(bytes);
-      } else if (!StringUtil.decodeBytestringUtf8(line).equals(line)) {
+      } else if (!StringUtil.reencodeInternalToExternal(line).equals(line)) {
         // We successfully decoded line from utf8 - meaning it was already encoded as utf8.
         // We do not want to double-encode.
         outputStream.write(bytes);

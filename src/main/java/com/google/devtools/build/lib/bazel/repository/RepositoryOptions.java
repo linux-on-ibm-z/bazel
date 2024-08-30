@@ -104,8 +104,7 @@ public class RepositoryOptions extends OptionsBase {
       help =
           "If false, native repo rules can be used in WORKSPACE; otherwise, Starlark repo rules "
               + "must be used instead. Native repo rules include local_repository, "
-              + "new_local_repository, local_config_platform, android_sdk_repository, and "
-              + "android_ndk_repository.")
+              + "new_local_repository, local_config_platform, and android_sdk_repository.")
   public boolean disableNativeRepoRules;
 
   @Option(
@@ -251,19 +250,6 @@ public class RepositoryOptions extends OptionsBase {
               + " disable the check, `warning` to print a warning when mismatch detected or `error`"
               + " to escalate it to a resolution failure.")
   public CheckDirectDepsMode checkDirectDependencies;
-
-  @Option(
-      name = "experimental_repository_cache_urls_as_default_canonical_id",
-      defaultValue = "true",
-      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
-      metadataTags = OptionMetadataTag.DEPRECATED,
-      effectTags = {OptionEffectTag.NO_OP},
-      deprecationWarning =
-          "This behavior is enabled by default for http_* and jvm_* rules and no "
-              + "longer controlled by this flag. Use "
-              + "--repo_env=BAZEL_HTTP_RULES_URLS_AS_DEFAULT_CANONICAL_ID=0 to disable it instead.",
-      help = "No-op.")
-  public boolean urlsAsDefaultCanonicalId;
 
   @Option(
       name = "experimental_check_external_repository_files",

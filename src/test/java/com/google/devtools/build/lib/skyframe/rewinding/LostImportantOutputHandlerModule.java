@@ -119,6 +119,11 @@ public class LostImportantOutputHandlerModule extends BlazeModule {
       throw new UnsupportedOperationException();
     }
 
+    @Override
+    public void processWorkspaceStatusOutputs(Path stableOutput, Path volatileOutput) {
+      throw new UnsupportedOperationException();
+    }
+
     private LostArtifacts getLostOutputs(
         Iterable<Artifact> outputs,
         ArtifactExpander expander,
@@ -158,7 +163,7 @@ public class LostImportantOutputHandlerModule extends BlazeModule {
 
     private Stream<OutputAndOwner> expand(Artifact output, ArtifactExpander expander) {
       if (output.isTreeArtifact()) {
-        var children = expander.expandTreeArtifact(output).stream();
+        var children = expander.tryExpandTreeArtifact(output).stream();
         var archivedTreeArtifact = expander.getArchivedTreeArtifact(output);
         var expansion =
             archivedTreeArtifact == null

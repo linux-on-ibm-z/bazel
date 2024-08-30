@@ -15,14 +15,12 @@ package com.google.devtools.build.lib.skyframe.config;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Iterables;
 import com.google.devtools.build.lib.analysis.config.BuildOptions;
-import com.google.devtools.build.lib.analysis.config.BuildOptionsView;
-import com.google.devtools.build.lib.analysis.config.transitions.PatchTransition;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.Label.RepoContext;
 import com.google.devtools.build.lib.cmdline.RepositoryName;
-import com.google.devtools.build.lib.events.EventHandler;
+import com.google.devtools.build.lib.events.Event;
+import com.google.devtools.build.lib.events.ExtendedEventHandler;
 import com.google.devtools.build.lib.skyframe.ProjectValue;
 import com.google.devtools.build.lib.skyframe.RepositoryMappingValue;
 import com.google.devtools.build.lib.skyframe.config.ParsedFlagsFunction.ParsedFlagsFunctionException;
@@ -32,8 +30,8 @@ import com.google.devtools.build.skyframe.SkyFunctionException.Transience;
 import com.google.devtools.build.skyframe.SkyKey;
 import com.google.devtools.build.skyframe.SkyValue;
 import com.google.devtools.common.options.OptionsParsingException;
-import com.google.devtools.common.options.OptionsParsingResult;
 import java.util.Collection;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.annotation.Nullable;
 import net.starlark.java.eval.Dict;
 
@@ -54,6 +52,8 @@ public class FlagSetFunction implements SkyFunction {
   private static final String CONFIGS = "configs";
 
   private static final String SUPPORTED_CONFIGS = "supported_configs";
+  private static final String DEFAULT_CONFIG = "default_config";
+  private final AtomicBoolean defaultConfigWarningShown = new AtomicBoolean(false);
 
   @Override
   @SuppressWarnings("unchecked")
@@ -80,12 +80,16 @@ public class FlagSetFunction implements SkyFunction {
     }
     ImmutableList<String> sclConfigAsStarlarkList =
         getSclConfig(
-            key.getProjectFile(), projectValue, key.getSclConfig(), key.enforceCanonical());
+            key.getProjectFile(),
+            projectValue,
+            key.getSclConfig(),
+            key.enforceCanonical(),
+            env.getListener());
     ParsedFlagsValue parsedFlags = parseFlags(sclConfigAsStarlarkList, env);
     if (parsedFlags == null) {
       return null;
     }
-    return FlagSetValue.create(changeOptions(key.getTargetOptions(), parsedFlags, env));
+    return FlagSetValue.create(changeOptions(key.getTargetOptions(), parsedFlags));
   }
 
   /**
@@ -94,29 +98,48 @@ public class FlagSetFunction implements SkyFunction {
    */
   @SuppressWarnings("unchecked")
   private ImmutableList<String> getSclConfig(
-      Label projectFile, ProjectValue sclContent, String sclConfigName, boolean enforceCanonical)
+      Label projectFile,
+      ProjectValue sclContent,
+      String sclConfigName,
+      boolean enforceCanonical,
+      ExtendedEventHandler eventHandler)
       throws FlagSetFunctionException {
     var configs = (Dict<String, Collection<String>>) sclContent.getResidualGlobal(CONFIGS);
-    var sclConfigValue = configs.get(sclConfigName);
+    var sclConfigValue = configs == null ? null : configs.get(sclConfigName);
     var supportedConfigs = (Dict<String, String>) sclContent.getResidualGlobal(SUPPORTED_CONFIGS);
+    var defaultConfigName = (String) sclContent.getResidualGlobal(DEFAULT_CONFIG);
 
     // Look for invalid use cases.
     if (!enforceCanonical) {
       // Calling code already handled non-existent --scl_config values and !enforceCanonical.
       Preconditions.checkNotNull(sclConfigValue);
-    } else if (supportedConfigs == null) {
+    } else if (supportedConfigs == null || configs == null) {
       // This project doesn't declare supported configs. Allow any --scl_config just as if
       // --enforce_project_configs isn't set. This also means --scl_config=<name doesn't resolve>
       // is silently consider a no-op.
       return sclConfigValue == null ? ImmutableList.of() : ImmutableList.copyOf(sclConfigValue);
     } else if (sclConfigName.isEmpty()) {
-      // This project declares supported configs and user didn't specify any config.
-      throw new FlagSetFunctionException(
-          new UnsupportedConfigException(
-              String.format(
-                  "This project's builds must set --scl_config.%s",
-                  supportedConfigsDesc(projectFile, supportedConfigs))),
-          Transience.PERSISTENT);
+      try {
+        ImmutableList<String> defaultConfigValue =
+            validateDefaultConfig(defaultConfigName, configs, supportedConfigs);
+        if (!defaultConfigWarningShown.get()) {
+          eventHandler.handle(
+              Event.info(
+                  String.format(
+                      "Applying flags from the default config defined in %s: %s ",
+                      projectFile, defaultConfigValue)));
+          defaultConfigWarningShown.set(true);
+        }
+        return defaultConfigValue;
+      } catch (InvalidProjectFileException e) {
+        // there's no default config set.
+        throw new FlagSetFunctionException(
+            new UnsupportedConfigException(
+                String.format(
+                    "This project's builds must set --scl_config because %s.\n%s",
+                    e.getMessage(), supportedConfigsDesc(projectFile, supportedConfigs))),
+            Transience.PERSISTENT);
+      }
     } else if (!supportedConfigs.containsKey(sclConfigName)) {
       // This project declares supported configs and user set --scl_config to an unsupported config.
       throw new FlagSetFunctionException(
@@ -128,6 +151,29 @@ public class FlagSetFunction implements SkyFunction {
       }
 
     return ImmutableList.copyOf(sclConfigValue);
+  }
+
+  private static ImmutableList<String> validateDefaultConfig(
+      String defaultConfigName,
+      Dict<String, Collection<String>> configs,
+      Dict<String, String> supportedConfigs)
+      throws InvalidProjectFileException {
+    if (defaultConfigName == null) {
+      throw new InvalidProjectFileException("no default_config is defined");
+    }
+
+    if (!configs.containsKey(defaultConfigName)) {
+      throw new InvalidProjectFileException(
+          String.format("default_config refers to a nonexistent config: %s", defaultConfigName));
+    }
+
+    if (!supportedConfigs.containsKey(defaultConfigName)) {
+      throw new InvalidProjectFileException(
+          String.format(
+              "default_config does not refer to a supported config: %s", defaultConfigName));
+    }
+
+    return ImmutableList.copyOf(configs.get(defaultConfigName));
   }
 
   /** Returns a user-friendly description of project-supported configurations. */
@@ -166,15 +212,10 @@ public class FlagSetFunction implements SkyFunction {
   }
 
   /** Modifies input build options with the desired flag set and returns the result. */
-  private BuildOptions changeOptions(
-      BuildOptions fromOptions, ParsedFlagsValue parsedFlags, Environment env)
-      throws FlagSetFunctionException, InterruptedException {
+  private BuildOptions changeOptions(BuildOptions fromOptions, ParsedFlagsValue parsedFlags)
+      throws FlagSetFunctionException {
     try {
-      FlagSetTransition transition = new FlagSetTransition(parsedFlags.flags().parse());
-      BuildOptionsView buildOptionsView =
-          new BuildOptionsView(fromOptions, parsedFlags.flags().optionsClasses());
-      return Iterables.getOnlyElement(
-          transition.apply(buildOptionsView, env.getListener()).values());
+      return parsedFlags.flags().mergeWith(fromOptions);
     } catch (OptionsParsingException e) {
       throw new FlagSetFunctionException(e, Transience.PERSISTENT);
     }
@@ -192,18 +233,9 @@ public class FlagSetFunction implements SkyFunction {
     }
   }
 
-  /** Transition that applies the config defines in PROJECT.scl to existing buildOptions */
-  private static class FlagSetTransition implements PatchTransition {
-    public final OptionsParsingResult parsingResult;
-
-    public FlagSetTransition(OptionsParsingResult parsingResult) {
-      this.parsingResult = parsingResult;
-    }
-
-    @Override
-    public BuildOptions patch(BuildOptionsView originalOptions, EventHandler eventHandler) {
-      BuildOptions toOptions = originalOptions.underlying().clone();
-      return toOptions.applyParsingResult(parsingResult);
+  private static final class InvalidProjectFileException extends Exception {
+    InvalidProjectFileException(String msg) {
+      super(msg);
     }
   }
 }
